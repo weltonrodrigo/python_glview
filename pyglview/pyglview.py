@@ -9,6 +9,12 @@ import time
 import numpy as np
 from easydict import EasyDict as edict
 
+mouse_x = 0
+mouse_y = 0
+height = 720
+get_input = False
+sample_size = (5 , 5)
+
 try:
     from OpenGL.GL import *
     from OpenGL.GLU import *
@@ -84,11 +90,18 @@ class Viewer:
     def set_window_name(self, name):
         self.window_name = name
 
+    def set_sample_size(self, size):
+        global sample_size
+        sample_size = size
+
     def set_image(self, img):
         self.image_buffer = img
 
     def set_loop(self, func):
         self.idle_function = func
+
+    def set_sample_cb(self, func):
+        self.sample_cb = func
 
     def set_destructor(self, func):
         self.destructor_function = func
@@ -180,6 +193,7 @@ class Viewer:
             glutDisplayFunc(self.__gl_draw)
             glutIdleFunc(self.__gl_draw)
             glutReshapeFunc(self.__gl_resize)
+            #glutMouseFunc(self.__gl_mouse)
             glutKeyboardFunc(self.__gl_keyboard)
             glutSpecialFunc(self.__gl_keyboard)
 
@@ -320,13 +334,24 @@ class Viewer:
         #glfwGetFramebufferSize(window, &width, &height);
         # glViewport(0, 0, int(self.window_width), int(self.window_height))
 
+    def __gl_mouse(element, button, state, x, y):
+        global get_input, height, mouse_x, mouse_y
+        if button == GLUT_LEFT_BUTTON and state == GLUT_DOWN:
+            print("CLICK on %s, %s, %s, %s" % (button, state, x, y))
+            #self.__mouse_cb(x, y)
+            mouse_x = x
+            mouse_y = height - y
+            get_input = True
+
+
     def __gl_keyboard(self, key, x, y):
+
         if type(key) == bytes:
             key = ord(key)
         else:
             key = 0x0100 + key
         if self.keyboard_listener: self.keyboard_listener(key, x, y)
-        if key == b'q' or key == b'\x1b' or key == b'\x03':
+        if key == b'q' or key == 113 or key == b'\x1b' or key == b'\x03':
             if self.destructor_function is not None:
                 logger.info("Call destructor function")
                 self.destructor_function()
@@ -334,6 +359,8 @@ class Viewer:
             return
 
     def __gl_draw(self):
+        global mouse_x, mouse_y, get_input
+
         self.cnt2 += 1
         if self.idle_function is not None: self.idle_function()
         if self.image_buffer is not None:
@@ -361,6 +388,8 @@ class Viewer:
                 glEnable(GL_TEXTURE_2D)
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+
+                
                 glBegin(GL_QUADS)
                 glTexCoord2d(0.0, 1.0)
                 w = self.window_width
@@ -385,8 +414,14 @@ class Viewer:
                 glEnd()
 
                 glFlush()
+                if get_input:
+                    c = glReadPixels(mouse_x, mouse_y, *sample_size, GL_RGB, GL_UNSIGNED_BYTE, None)
+                    print(c.hex())
+                    self.sample_cb(c)
+                    get_input=False
                 if self.double_buffer:
                     glutSwapBuffers()
+
             except Exception as e:
                 logger.error(e)
                 exit(9)
@@ -424,6 +459,7 @@ if __name__ == '__main__':
     parser.add_argument('--generate', action='store_true')
     parser.add_argument('--disable_audio_normalize', action='store_true')
     args = parser.parse_args()
+
 
     viewer = Viewer(cpu=False, fullscreen=False)
     # viewer = Viewer(opengl_direct=False)
